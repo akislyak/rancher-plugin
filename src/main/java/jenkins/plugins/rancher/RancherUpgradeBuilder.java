@@ -125,12 +125,12 @@ public class RancherUpgradeBuilder extends AbstractRancherBuilder {
         }
 
         public ListBoxModel doFillCredentialIdItems() {
-            if (!Jenkins.getInstance().hasPermission(Jenkins.ADMINISTER)) {
+            if (!Jenkins.get().hasPermission(Jenkins.ADMINISTER)) {
                 return new ListBoxModel();
             }
             List<StandardUsernamePasswordCredentials> credentials = credentialsUtil.getCredentials();
             return new StandardUsernameListBoxModel()
-                    .withEmptySelection()
+                    .includeEmptyValue()
                     .withAll(credentials);
         }
 

@@ -4,7 +4,10 @@ package jenkins.plugins.rancher;
 import com.cloudbees.plugins.credentials.common.StandardUsernameListBoxModel;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.google.common.base.Strings;
-import hudson.*;
+import hudson.AbortException;
+import hudson.Extension;
+import hudson.FilePath;
+import hudson.Launcher;
 import hudson.model.AbstractProject;
 import hudson.model.Run;
 import hudson.model.TaskListener;
@@ -12,29 +15,32 @@ import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.Builder;
 import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import javax.annotation.Nonnull;
+import javax.servlet.ServletException;
 import jenkins.model.Jenkins;
 import jenkins.plugins.rancher.action.InServiceStrategy;
 import jenkins.plugins.rancher.action.ServiceUpgrade;
-import jenkins.plugins.rancher.entity.*;
+import jenkins.plugins.rancher.entity.Environment;
+import jenkins.plugins.rancher.entity.LaunchConfig;
+import jenkins.plugins.rancher.entity.Service;
+import jenkins.plugins.rancher.entity.Services;
 import jenkins.plugins.rancher.entity.Stack;
 import jenkins.plugins.rancher.util.CredentialsUtil;
-import jenkins.plugins.rancher.util.EnvironmentParser;
 import jenkins.plugins.rancher.util.Parser;
 import jenkins.plugins.rancher.util.ServiceField;
-import jenkins.tasks.SimpleBuildStep;
 import net.sf.json.JSONObject;
 import org.apache.commons.lang.StringUtils;
 import org.jenkinsci.Symbol;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest;
-
-import javax.annotation.Nonnull;
-import javax.servlet.ServletException;
-import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.util.*;
 
 public class RancherBuilder extends AbstractRancherBuilder {
 
@@ -209,12 +215,12 @@ public class RancherBuilder extends AbstractRancherBuilder {
         }
 
         public ListBoxModel doFillCredentialIdItems() {
-            if (!Jenkins.getInstance().hasPermission(Jenkins.ADMINISTER)) {
+            if (!Jenkins.get().hasPermission(Jenkins.ADMINISTER)) {
                 return new ListBoxModel();
             }
             List<StandardUsernamePasswordCredentials> credentials = credentialsUtil.getCredentials();
             return new StandardUsernameListBoxModel()
-                    .withEmptySelection()
+                    .includeEmptyValue()
                     .withAll(credentials);
         }
 
@@ -222,7 +228,7 @@ public class RancherBuilder extends AbstractRancherBuilder {
                 @QueryParameter("endpoint") final String endpoint,
                 @QueryParameter("environmentId") final String environmentId,
                 @QueryParameter("credentialId") final String credentialId
-        ) throws IOException, ServletException {
+        ) throws IOException {
 
             try {
                 RancherClient client;

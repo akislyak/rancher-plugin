@@ -4,15 +4,23 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import org.apache.commons.codec.binary.Base64;
-import org.apache.commons.httpclient.DefaultHttpMethodRetryHandler;
-import org.apache.commons.httpclient.HttpMethod;
-import org.apache.commons.httpclient.HttpStatus;
-import org.apache.commons.httpclient.methods.*;
-import org.apache.commons.httpclient.params.HttpMethodParams;
-
-import java.io.*;
+import java.io.IOException;
 import java.nio.charset.Charset;
+import org.apache.commons.codec.binary.Base64;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpStatus;
+import org.apache.http.client.ResponseHandler;
+import org.apache.http.client.methods.HttpDelete;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpPut;
+import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
 
 public abstract class HttpClient {
 
@@ -26,51 +34,49 @@ public abstract class HttpClient {
         this.endpoint = endpoint;
     }
 
-    protected <T> T get(String url, Class<T> responseClass) throws IOException {
-        GetMethod deleteMethod = new GetMethod(endpoint + url);
-        return execute(deleteMethod, responseClass);
+    protected <T> T get(String url, Class<T> responseClass) {
+        HttpGet getMethod = new HttpGet(endpoint + url);
+        return execute(getMethod, responseClass);
     }
 
-    protected <T> T delete(String url, Class<T> responseClass) throws IOException {
-        DeleteMethod deleteMethod = new DeleteMethod(endpoint + url);
-        return execute(deleteMethod, responseClass);
+    protected <T> T delete(String url, Class<T> responseClass) {
+        HttpDelete httpDelete = new HttpDelete(endpoint + url);
+        return execute(httpDelete, responseClass);
     }
 
     protected <T> T post(String url, Object data, Class<T> responseClass) throws IOException {
-        PostMethod method = new PostMethod(endpoint + url);
-        method.setRequestEntity(getRequestBody(data));
+        HttpPost method = new HttpPost(endpoint + url);
+        method.setEntity(getRequestBody(data));
         return this.execute(method, responseClass);
     }
 
-    protected <T> T post(String url, Class<T> responseClass) throws IOException {
-        PostMethod method = new PostMethod(endpoint + url);
+    protected <T> T post(String url, Class<T> responseClass) {
+        HttpPost method = new HttpPost(endpoint + url);
         return this.execute(method, responseClass);
     }
 
     protected <T> T put(String url, Object data, Class<T> responseClass) throws IOException {
-        PutMethod method = new PutMethod(endpoint + url);
-        method.setRequestEntity(getRequestBody(data));
+        HttpPut method = new HttpPut(endpoint + url);
+        method.setEntity(getRequestBody(data));
         return this.execute(method, responseClass);
     }
 
-    private <T> T execute(HttpMethod method, Class<T> responseClass) {
-        try {
-            method.addRequestHeader("Authorization", getAuthorization());
-            method.getParams().setParameter(HttpMethodParams.RETRY_HANDLER, new DefaultHttpMethodRetryHandler(3, false));
-            int statusCode = new org.apache.commons.httpclient.HttpClient().executeMethod(method);
+    private <T> T execute(HttpRequestBase method, Class<T> responseClass) {
+        try (CloseableHttpClient httpclient = HttpClients.custom()
+                .setRetryHandler(new DefaultHttpRequestRetryHandler(3, false)).build())  {
 
-            InputStream resStream = method.getResponseBodyAsStream();
-            BufferedReader br = new BufferedReader(new InputStreamReader(resStream));
-            StringBuilder resBuffer = new StringBuilder();
-            String resTemp;
-            while ((resTemp = br.readLine()) != null) {
-                resBuffer.append(resTemp);
-            }
-            String responseBody = resBuffer.toString();
+            method.addHeader("Authorization", getAuthorization());
+            ResponseHandler<String> responseHandler = response -> {
+            int status = response.getStatusLine().getStatusCode();
 
-            if (statusCode != HttpStatus.SC_OK && statusCode != HttpStatus.SC_ACCEPTED && statusCode != HttpStatus.SC_CREATED) {
-                throw new RuntimeException(String.format("Some Error Happen statusCode %d response: %s", statusCode, responseBody));
-            }
+                if (status != HttpStatus.SC_OK && status != HttpStatus.SC_ACCEPTED && status != HttpStatus.SC_CREATED) {
+                    throw new RuntimeException(String.format("Some Error Happen statusCode %d", status));
+                }
+                HttpEntity entity = response.getEntity();
+                return entity != null ? EntityUtils.toString(entity) : null;
+            };
+
+            String responseBody = httpclient.execute(method, responseHandler);
             return getObjectMapper().readValue(responseBody, responseClass);
         } catch (IOException e) {
             e.printStackTrace();
@@ -80,9 +86,9 @@ public abstract class HttpClient {
         }
     }
 
-    private StringRequestEntity getRequestBody(Object stack) throws JsonProcessingException, UnsupportedEncodingException {
+    private HttpEntity getRequestBody(Object stack) throws JsonProcessingException {
         String requestBody = getObjectMapper().writeValueAsString(stack);
-        return new StringRequestEntity(requestBody, "application/json", "UTF-8");
+        return new StringEntity(requestBody, ContentType.APPLICATION_JSON);
     }
 
     private String getAuthorization() {
@@ -96,6 +102,4 @@ public abstract class HttpClient {
         objectMapper.configure(SerializationFeature.FAIL_ON_UNWRAPPED_TYPE_IDENTIFIERS, false);
         return objectMapper;
     }
-
-
 }
