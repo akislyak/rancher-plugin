@@ -144,3 +144,8 @@ test the plugin.
 
 * Support start before stop options
 * Fixed network config missing
+
+### Version 1.0.15 (Apr 24 2023 )
+
+* Migrated to Apache HTTP client v4 API
+* Fixed Jenkins compatibility issues
